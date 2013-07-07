@@ -26,6 +26,7 @@ var program = require('commander');
 var cheerio = require('cheerio');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var rest = require('restler');
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -46,6 +47,10 @@ var loadChecks = function(checksfile) {
 
 var checkHtmlFile = function(htmlfile, checksfile) {
     $ = cheerioHtmlFile(htmlfile);
+    return checkHtml($, checksfile);
+};
+
+var checkHtml = function($, checksfile) {
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
@@ -61,14 +66,37 @@ var clone = function(fn) {
     return fn.bind({});
 };
 
-if(require.main == module) {
-    program
-        .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-        .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
+var checkUrl = function(url, checksfile) {
+    rest.get(url).on('complete', function(result) {
+        if (result instanceof Error) {
+            console.log('Error: ' + result.message);
+            process.exit(1);
+        } else {
+            mainProcess(result, checksfile);
+        }
+    });
+}
+
+var mainProcess = function(htmlFile, checksFile) {
+    $ = cheerio.load(htmlFile);
+    var checkJson = checkHtml($, checksFile);
     var outJson = JSON.stringify(checkJson, null, 4);
     console.log(outJson);
+}
+
+if(require.main == module) {
+    program
+	.option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
+	.option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+	.option('-u, --url <url>', 'URL path as input')
+	.parse(process.argv);
+    var htmlFile ='s';
+    if (program.url) {
+        checkUrl(program.url, program.checks);
+    } else {
+        htmlFile = fs.readFileSync(program.file);
+        mainProcess(htmlFile, program.checks); 
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
